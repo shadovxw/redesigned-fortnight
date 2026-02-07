@@ -13,7 +13,7 @@ import (
 var DB *sql.DB
 
 // Initialize sets up the SQLite database connection and creates tables
-func Initialize(storagePath string) error {
+func Initialize(dbPath, storagePath string) error {
 	// Create storage directory if it doesn't exist
 	if err := os.MkdirAll(storagePath, 0755); err != nil {
 		return fmt.Errorf("failed to create storage directory: %w", err)
@@ -31,8 +31,13 @@ func Initialize(storagePath string) error {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
+	// Ensure DB directory exists
+	dbDir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return fmt.Errorf("failed to create database directory: %w", err)
+	}
+
 	// Open SQLite database
-	dbPath := filepath.Join(storagePath, "echo.db")
 	var err error
 	DB, err = sql.Open("sqlite", dbPath+"?cache=shared&mode=rwc")
 	if err != nil {

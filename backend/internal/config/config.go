@@ -11,7 +11,8 @@ type Config struct {
 	Port         string
 	AuthUsername string
 	AuthPassword string
-	StoragePath  string // Path to store database and audio files
+	StoragePath  string // Path to store audio files
+	DatabasePath string // Path to store SQLite database
 }
 
 func Load() *Config {
@@ -46,6 +47,12 @@ func Load() *Config {
 		storagePath = "./storage" // Default local storage
 	}
 
+	// Database path - default to local ./data/echo.db to avoid NAS locking issues
+	databasePath := os.Getenv("DATABASE_PATH")
+	if databasePath == "" {
+		databasePath = "./data/echo.db" // Default local database
+	}
+
 	return &Config{
 		GroqAPIKey:   groqKey,
 		GeminiAPIKey: geminiKey,
@@ -53,5 +60,6 @@ func Load() *Config {
 		AuthUsername: authUsername,
 		AuthPassword: authPassword,
 		StoragePath:  storagePath,
+		DatabasePath: databasePath,
 	}
 }

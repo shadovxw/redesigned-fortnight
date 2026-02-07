@@ -13,7 +13,7 @@ func main() {
 	cfg := config.Load()
 
 	// Initialize database
-	if err := database.Initialize(cfg.StoragePath); err != nil {
+	if err := database.Initialize(cfg.DatabasePath, cfg.StoragePath); err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
 	defer database.Close()

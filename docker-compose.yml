@@ -15,9 +15,11 @@ services:
       - AUTH_USERNAME=${AUTH_USERNAME:-admin}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-admin}
       - STORAGE_PATH=/app/storage
+      - DATABASE_PATH=/app/data/echo.db
     volumes:
       # - echo-data:/app/storage # Old docker volume
-      - /mnt/nas:/app/storage # New NAS mount
+      - /mnt/nas:/app/storage # New NAS mount (Audio)
+      - echo-db:/app/data # Local Volume (Database)
     networks:
       - echo-network
 
@@ -38,3 +40,4 @@ networks:
 
 volumes:
   echo-data:
+  echo-db:
