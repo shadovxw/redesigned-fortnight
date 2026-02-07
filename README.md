@@ -1,65 +1,120 @@
 # ECHO Meeting Assistant 🎙️
 
-A Notion-style meeting assistant with real-time transcription, AI formatting, and persistent storage.
+A professional, Notion-style meeting assistant that provides real-time transcription, AI-powered formatting, and persistent storage. Built with a microservices architecture and designed for self-hosting.
 
-## Features
-- **Real-time Transcription:** Live streaming audio transcription using Groq (Whisper).
-- **AI Formatting:** Clean up transcripts and extract tasks using Gemini 1.5 Flash.
-- **Smart Editor:** Tiptap-based editor with Notion-like bubble menus.
-- **Persistent Storage:** Saves meetings and audio to SQLite + NAS/Local storage.
-- **Authentication:** Secure JWT login system.
-- **Microservices Ready:** Dockerized for easy deployment behind an Nginx gateway.
+![Echo Dashboard](https://github.com/shadovxw/redesigned-fortnight/blob/main/media/dashboard.png?raw=true)
 
-## Deployment Guide
+## 🌟 Key Features
+
+### 1. Real-Time Transcription
+- **Live Streaming:** Uses **WebSockets** to stream audio chunks to the backend.
+- **Groq API (Whisper):** processed by Groq's ultra-fast inference engine for near-instant text generation.
+- **Visual Feedback:** Shows real-time waveform visualization during recording.
+
+### 2. AI-Powered Formatting
+- **Gemini 1.5 Flash:** Cleans up raw transcripts into professional meeting notes with a single click.
+- **Task Extraction:** Automatically identifies and lists action items from the conversation.
+- **Tiptap Editor:** A rich-text editor with a "Notion-like" bubble menu for quick AI actions.
+
+### 3. Hybrid Storage Architecture
+- **Local Database:** SQLite database (`echo.db`) stored on the server's local disk for maximum reliability and performance (avoids `SQLITE_BUSY` errors).
+- **NAS Integration:** Large audio recordings are automatically saved to your mounted Network Attached Storage (NAS) via CIFS/SMB.
+
+### 4. Secure Authentication
+- **JWT Auth:** Secure, stateless authentication using JSON Web Tokens.
+- **Middleware:** Go middleware protects API routes; Next.js hooks protect frontend pages.
+
+### 5. Microservices Ready
+- **Dockerized:** Frontend and Backend are containerized with optimized multi-stage builds.
+- **Nginx Gateway:** Designed to sit behind a host Nginx reverse proxy, allowing multiple apps (like your portfolio) to coexist on the same server.
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend (Go / Golang)
+- **Framework:** Gin (High-performance HTTP web framework)
+- **Database:** `modernc.org/sqlite` (CGO-free SQLite driver)
+- **Audio Processing:** `ffmpeg` (Audio merging and format conversion)
+- **AI Integration:** Google Gemini SDK, Groq API (via REST)
+
+### Frontend (Next.js)
+- **Framework:** Next.js 14 (React) with TypeScript
+- **Styling:** Tailwind CSS + Lucide Icons
+- **Editor:** Tiptap (Headless wrapper for ProseMirror)
+- **State Management:** React Hooks + Context API
+
+### DevOps & CI/CD
+- **Docker:** Multi-stage Dockerfiles for optimized image size.
+- **Docker Compose:** Orchestrates the Frontend, Backend, and Networking.
+- **GitHub Actions:** Auto-deploys changes to the server via SSH on every push to `main`.
+
+---
+
+## 🚀 CI/CD Pipeline
+
+This project uses **GitHub Actions** for continuous deployment.
+
+**Workflow File:** `.github/workflows/deploy.yml`
+
+### How it Works:
+1. **Push to Main:** Triggers the workflow.
+2. **Build & Push:** GitHub Actions builds Docker images and pushes them to **Docker Hub**.
+3. **Deploy:** Connects to your server via SSH and runs:
+   ```bash
+   cd /srv/echo
+   docker-compose pull # Pulls new images from Docker Hub
+   docker-compose up -d # Restarts with new code
+   ```
+
+*To enable this, configure these Repository Secrets in GitHub:*
+- `DOCKER_USERNAME` / `DOCKER_PASSWORD`
+- `SERVER_HOST` / `SERVER_USER` / `SERVER_SSH_KEY`
+
+---
+
+## 📦 Deployment Guide
 
 ### Prerequisites
-- Linux Server (Ubuntu/Debian)
-- Docker & Docker Compose
+- Linux Server (Ubuntu/Debian) with Docker & Docker Compose
 - `cifs-utils` (for NAS mounting)
 
-### 1. Setup
+### 1. Server Setup
 ```bash
-# Clone the repo
-git clone https://github.com/shadovxw/redesigned-fortnight.git echo
-cd echo
-
-# Install dependencies (on host)
+# Install NAS helper
 sudo apt update && sudo apt install cifs-utils -y
 
-# Mount NAS (Optional but recommended)
+# Create NAS mount point
 sudo mkdir -p /mnt/nas
 sudo mount -t cifs -o username=user,password=pass,vers=3.0 //NAS_IP/share /mnt/nas
-
-# Configure Environment
-cp .env.example .env
-nano .env # Add your API keys!
 ```
 
-### 2. Run with Docker
+### 2. Run the App
 ```bash
+git clone https://github.com/shadovxw/redesigned-fortnight.git echo
+cd echo
+cp .env.example .env # Fill in keys!
 sudo docker-compose up -d --build
 ```
-- **Frontend:** `http://localhost:8000`
-- **Backend:** Internal (only accessible via Docker network)
 
-### 3. Nginx Gateway (Multi-Domain Setup)
-See [`PROXY_SETUP.md`](PROXY_SETUP.md) for details on setting up a reverse proxy to host Echo alongside other apps (like your portfolio) on port 80/443.
+### 3. Nginx Gateway
+Since you host other apps (like Portfolio), use Nginx on the host to route traffic:
+- **Echo:** Port 8000 (Internal) -> `echo.shadovxw.me`
+- **Portfolio:** Port 3000 -> `portfolio.shadovxw.me`
 
-## Troubleshooting
+*(See [`PROXY_SETUP.md`](PROXY_SETUP.md) for the exact Nginx config file).*
 
-### "ContainerConfig" Error
-If you see `KeyError: 'ContainerConfig'` during deployment, your Docker state is corrupted. Fix it by cleaning up:
+---
 
+## 🔧 Troubleshooting
+
+### "ContainerConfig" / "Recreate" Errors?
+If `docker-compose up` fails with `KeyError: 'ContainerConfig'`, your Docker state is corrupted. Run:
 ```bash
-# 1. Force remove old containers
 sudo docker rm -f echo-backend echo-frontend
-
-# 2. Remove images
 sudo docker rmi echo_echo-backend echo_echo-frontend
-
-# 3. Deploy again
 sudo docker-compose up -d --build --force-recreate
 ```
 
-### "Port already in use"
-Ensure port `8000` is free, or change it in `docker-compose.yml`.
+### Database Locked?
+We use split storage to fix this. Ensure your `docker-compose.yml` mounts a **local** volume for `/app/data` (DB) and the **NAS** for `/app/storage` (Audio).
