@@ -16,7 +16,8 @@ services:
       - AUTH_PASSWORD=${AUTH_PASSWORD:-admin}
       - STORAGE_PATH=/app/storage
     volumes:
-      - echo-data:/app/storage
+      # - echo-data:/app/storage # Old docker volume
+      - /mnt/nas:/app/storage # New NAS mount
     networks:
       - echo-network
 
