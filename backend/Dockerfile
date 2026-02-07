@@ -13,7 +13,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
+# Ensure dependencies are tidy
+RUN go mod tidy
+
+# Build the binary with CGO disabled
 RUN CGO_ENABLED=0 GOOS=linux go build -o echo-server cmd/server/main.go
 
 # Production stage
