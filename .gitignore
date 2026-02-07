@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+.next/
+
+# Environment files with secrets
+.env
+.env.local
+.env.production
+backend/.env
+
+# Build outputs
+*.exe
+backend/storage/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
