@@ -6,9 +6,18 @@ import (
 	"backend/internal/database"
 	"fmt"
 	"log"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Try loading .env from current directory or project root
+	if err := godotenv.Load(); err != nil {
+		if err := godotenv.Load("../../.env"); err != nil {
+			log.Println("No .env file found, using system environment variables")
+		}
+	}
+
 	// Load configuration from environment
 	cfg := config.Load()
 

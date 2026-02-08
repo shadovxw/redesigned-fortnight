@@ -5,6 +5,8 @@ import (
 	"backend/internal/api/middleware"
 	"backend/internal/config"
 	"backend/internal/services"
+	"log"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -14,11 +16,22 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 
 	// Enable CORS for frontend
-	r.Use(cors.Default())
+	corsConfig := cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+	r.Use(cors.New(corsConfig))
 
 	// Initialize services
 	transcriptionService := services.NewTranscriptionService(cfg.GroqAPIKey)
-	geminiService := services.NewGeminiService(cfg.GeminiAPIKey)
+	geminiService, err := services.NewGeminiService(cfg.GeminiAPIKey)
+	if err != nil {
+		log.Fatalf("Failed to initialize Gemini service: %v", err)
+	}
 	meetingService := services.NewMeetingService()
 	audioMergerService := services.NewAudioMergerService(cfg.StoragePath)
 

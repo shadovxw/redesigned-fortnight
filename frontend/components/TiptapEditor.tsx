@@ -1,139 +1,315 @@
 "use client";
-import { useEditor, EditorContent } from '@tiptap/react';
-import { BubbleMenu as BubbleMenuExtension } from '@tiptap/extension-bubble-menu';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import { Sparkles, Bold, Italic, List, Type, ListChecks } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
 
-interface TiptapEditorProps {
-    liveTranscript?: string;
+import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import HorizontalRule from "@tiptap/extension-horizontal-rule";
+import Suggestion from "@tiptap/suggestion";
+import { Extension } from "@tiptap/core";
+import { useEffect, useRef, useState } from "react";
+import { Poppins } from "next/font/google";
+import {
+    Sparkles,
+    CheckSquare,
+    Bold,
+    Italic,
+    Loader2,
+} from "lucide-react";
+
+/* ---------------- Font ---------------- */
+
+const poppins = Poppins({
+    subsets: ["latin"],
+    weight: ["400", "500", "600"],
+});
+
+/* ---------------- Types ---------------- */
+
+interface LiveTranscript {
+    text: string;
+    timestamp: number;
 }
 
-export default function TiptapEditor({ liveTranscript }: TiptapEditorProps) {
-    const lastInsertedRef = useRef<string>('');
-    const [showBubble, setShowBubble] = useState(false);
+interface TiptapEditorProps {
+    liveTranscript?: LiveTranscript | null;
+    initialContent?: string;
+    onUpdate?: (content: string) => void;
+}
+
+/* ---------------- Slash Commands ---------------- */
+
+const COMMANDS = [
+    {
+        title: "Heading 1",
+        description: "Big section heading",
+        command: (editor: any) =>
+            editor.chain().focus().toggleHeading({ level: 1 }).run(),
+    },
+    {
+        title: "Heading 2",
+        description: "Medium section heading",
+        command: (editor: any) =>
+            editor.chain().focus().toggleHeading({ level: 2 }).run(),
+    },
+    {
+        title: "To-do List",
+        description: "Checklist with boxes",
+        command: (editor: any) =>
+            editor.chain().focus().toggleTaskList().run(),
+    },
+    {
+        title: "Bullet List",
+        description: "Simple bullet list",
+        command: (editor: any) =>
+            editor.chain().focus().toggleBulletList().run(),
+    },
+    {
+        title: "Numbered List",
+        description: "Ordered list",
+        command: (editor: any) =>
+            editor.chain().focus().toggleOrderedList().run(),
+    },
+    {
+        title: "Quote",
+        description: "Quote block",
+        command: (editor: any) =>
+            editor.chain().focus().toggleBlockquote().run(),
+    },
+    {
+        title: "Divider",
+        description: "Horizontal line",
+        command: (editor: any) =>
+            editor.chain().focus().setHorizontalRule().run(),
+    },
+];
+
+/* ---------------- Slash Command Extension ---------------- */
+
+const SlashCommand = Extension.create({
+    name: "slash-command",
+
+    addOptions() {
+        return {
+            suggestion: {
+                char: "/",
+                startOfLine: true,
+                items: ({ query }: any) =>
+                    COMMANDS.filter((item) =>
+                        item.title.toLowerCase().includes(query.toLowerCase())
+                    ),
+                command: ({ editor, range, props }: any) => {
+                    editor.chain().focus().deleteRange(range).run();
+                    props.command(editor);
+                },
+                render: () => {
+                    let component: HTMLDivElement;
+
+                    return {
+                        onStart: (props: any) => {
+                            component = document.createElement("div");
+                            component.className =
+                                "bg-white shadow-xl border rounded-lg p-1 w-72";
+
+                            props.items.forEach((item: any) => {
+                                const button = document.createElement("button");
+                                button.className =
+                                    "w-full text-left px-3 py-2 hover:bg-slate-100 rounded";
+                                button.innerHTML = `
+                  <div class="font-medium">${item.title}</div>
+                  <div class="text-xs text-slate-500">${item.description}</div>
+                `;
+                                button.onclick = () => props.command(item);
+                                component.appendChild(button);
+                            });
+
+                            document.body.appendChild(component);
+                            const rect = props.clientRect();
+                            component.style.position = "absolute";
+                            component.style.left = rect.left + "px";
+                            component.style.top = rect.bottom + 6 + "px";
+                        },
+                        onExit: () => {
+                            component?.remove();
+                        },
+                    };
+                },
+            },
+        };
+    },
+
+    addProseMirrorPlugins() {
+        return [
+            Suggestion({
+                editor: this.editor,
+                ...this.options.suggestion,
+            }),
+        ];
+    },
+});
+
+/* ---------------- Component ---------------- */
+
+export default function TiptapEditor({
+    liveTranscript,
+    initialContent,
+    onUpdate,
+}: TiptapEditorProps) {
+    const [isAiLoading, setIsAiLoading] = useState(false);
+    const lastInsertedRef = useRef<number>(0);
 
     const editor = useEditor({
         extensions: [
             StarterKit,
-            BubbleMenuExtension,
+            TaskList,
+            TaskItem.configure({ nested: true }),
+            HorizontalRule,
+            SlashCommand,
             Placeholder.configure({
-                placeholder: 'Type "/" for commands or start recording...',
+                placeholder: "Start typing or wait for transcription...",
+                emptyEditorClass:
+                    "is-editor-empty cursor-text before:content-[attr(data-placeholder)] before:text-slate-400 before:pointer-events-none",
             }),
         ],
+        content: initialContent,
+        onUpdate: ({ editor }) => onUpdate?.(editor.getHTML()),
         editorProps: {
             attributes: {
-                class: 'prose prose-slate max-w-none focus:outline-none min-h-[500px] text-lg leading-relaxed',
+                class: `prose prose-lg max-w-none focus:outline-none min-h-[500px] ${poppins.className}`,
             },
         },
-        immediatelyRender: false,
     });
 
-    // Auto-insert live transcription chunks
-    useEffect(() => {
-        if (editor && liveTranscript && liveTranscript !== lastInsertedRef.current) {
-            lastInsertedRef.current = liveTranscript;
+    /* -------- Live transcription auto-insert -------- */
 
-            // Insert at the end of the document with a space
-            const { state } = editor;
-            const endPos = state.doc.content.size;
-            editor.commands.insertContentAt(endPos, ' ' + liveTranscript);
+    useEffect(() => {
+        if (!editor || !liveTranscript) return;
+
+        if (liveTranscript.timestamp > lastInsertedRef.current) {
+            lastInsertedRef.current = liveTranscript.timestamp;
+            const endPos = editor.state.doc.content.size;
+            editor.commands.insertContentAt(endPos, " " + liveTranscript.text);
+            editor.view.dom.scrollIntoView({ behavior: "smooth", block: "end" });
         }
     }, [liveTranscript, editor]);
 
-    if (!editor) return null;
+    /* -------- Two-finger tap → slash menu -------- */
 
-    // AI Logic: Send highlighted text to Go backend
+    useEffect(() => {
+        if (!editor) return;
+
+        const handleTouch = (e: TouchEvent) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                editor.chain().focus().insertContent("/").run();
+            }
+        };
+
+        const dom = editor.view.dom;
+        dom.addEventListener("touchstart", handleTouch);
+        return () => dom.removeEventListener("touchstart", handleTouch);
+    }, [editor]);
+
+    /* ---------------- AI Logic ---------------- */
+
     const handleAIAction = async (action: string) => {
-        const { from, to } = editor.state.selection;
-        const selectedText = editor.state.doc.textBetween(from, to);
+        if (!editor) return;
 
-        if (!selectedText) return;
+        const { from, to } = editor.state.selection;
+        const text = editor.state.doc.textBetween(from, to);
+        if (!text) return;
+
+        setIsAiLoading(true);
 
         try {
-            const token = localStorage.getItem('echo_token');
-            const response = await fetch('http://localhost:8080/ai-format', {
-                method: 'POST',
-                body: JSON.stringify({ text: selectedText, action }),
+            const token = localStorage.getItem("echo_token");
+            const res = await fetch("/api/ai-format", {
+                method: "POST",
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
                 },
+                body: JSON.stringify({ text, action }),
             });
 
-            if (response.ok) {
-                const data = await response.json();
+            if (res.ok) {
+                const data = await res.json();
                 editor.chain().focus().insertContentAt({ from, to }, data.result).run();
-            } else {
-                console.error('AI formatting failed:', await response.text());
             }
-        } catch (err) {
-            console.error('AI request error:', err);
+        } finally {
+            setIsAiLoading(false);
         }
     };
 
-    return (
-        <div className="relative">
-            {/* Formatting Toolbar */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-2 flex gap-2 mb-4">
-                <button
-                    onClick={() => handleAIAction('beautify')}
-                    className="flex items-center gap-1 px-3 py-1.5 hover:bg-indigo-50 text-indigo-600 rounded text-sm font-bold border border-indigo-200"
-                >
-                    <Sparkles size={14} /> AI Clean
-                </button>
-                <div className="w-[1px] bg-slate-200 mx-1" />
-                <button
-                    onClick={() => editor.chain().focus().toggleBold().run()}
-                    className={`p-1.5 hover:bg-slate-100 rounded ${editor.isActive('bold') ? 'bg-slate-200' : ''}`}
-                >
-                    <Bold size={16} />
-                </button>
-                <button
-                    onClick={() => editor.chain().focus().toggleItalic().run()}
-                    className={`p-1.5 hover:bg-slate-100 rounded ${editor.isActive('italic') ? 'bg-slate-200' : ''}`}
-                >
-                    <Italic size={16} />
-                </button>
-                <button
-                    onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                    className={`p-1.5 hover:bg-slate-100 rounded ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`}
-                >
-                    <Type size={16} />
-                </button>
-                <button
-                    onClick={() => editor.chain().focus().toggleBulletList().run()}
-                    className={`p-1.5 hover:bg-slate-100 rounded ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`}
-                >
-                    <List size={16} />
-                </button>
-            </div>
+    if (!editor) return null;
 
-            {/* Selection-based AI Actions Menu */}
-            {editor && !editor.state.selection.empty && (
-                <div className="fixed z-50 flex gap-1 bg-slate-900 text-white rounded-lg shadow-xl p-1 border border-slate-700"
-                    style={{
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -120%)'
-                    }}>
-                    <button
-                        onClick={() => handleAIAction('beautify')}
-                        className="flex items-center gap-1 px-3 py-1.5 hover:bg-indigo-600 rounded text-sm font-medium transition"
-                    >
-                        <Sparkles size={14} /> Beautify
-                    </button>
-                    <button
-                        onClick={() => handleAIAction('extract-tasks')}
-                        className="flex items-center gap-1 px-3 py-1.5 hover:bg-green-600 rounded text-sm font-medium transition"
-                    >
-                        <ListChecks size={14} /> Extract Tasks
-                    </button>
-                </div>
-            )}
+    return (
+        <div className="relative max-w-4xl mx-auto pb-32">
+            {/* Bubble Menu */}
+            <BubbleMenu editor={editor} className="flex gap-1 bg-slate-900 p-2 rounded-full">
+                <button onClick={() => editor.chain().focus().toggleBold().run()}>
+                    <Bold className="text-white" size={16} />
+                </button>
+                <button onClick={() => editor.chain().focus().toggleItalic().run()}>
+                    <Italic className="text-white" size={16} />
+                </button>
+
+                <button
+                    onClick={() => handleAIAction("beautify")}
+                    disabled={isAiLoading}
+                    className="flex items-center gap-1 text-indigo-300 ml-2"
+                >
+                    {isAiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    Fix
+                </button>
+
+                <button
+                    onClick={() => handleAIAction("extract-tasks")}
+                    disabled={isAiLoading}
+                    className="flex items-center gap-1 text-emerald-300"
+                >
+                    {isAiLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckSquare size={14} />}
+                    Task
+                </button>
+            </BubbleMenu>
 
             <EditorContent editor={editor} />
+
+            <style jsx global>{`
+        /* === Task List (Checkbox) Styling === */
+        .ProseMirror ul[data-type="taskList"] {
+          list-style: none;
+          padding-left: 0;
+          margin: 0.5em 0;
+        }
+
+        .ProseMirror li[data-type="taskItem"] {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.5rem;
+          margin: 0.25em 0;
+        }
+
+        /* checkbox itself */
+        .ProseMirror li[data-type="taskItem"] > label {
+          display: flex;
+          align-items: center;
+          margin-top: 0.15em;
+          user-select: none;
+        }
+
+        /* text content */
+        .ProseMirror li[data-type="taskItem"] > div {
+          flex: 1;
+        }
+
+        /* completed task */
+        .ProseMirror li[data-type="taskItem"][data-checked="true"] > div {
+          text-decoration: line-through;
+          color: #94a3b8;
+        }
+      `}</style>
         </div>
     );
 }

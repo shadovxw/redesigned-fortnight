@@ -9,64 +9,97 @@ interface LiveRecorderProps {
 export default function LiveRecorder({ onTranscriptionChunk }: LiveRecorderProps) {
     const [status, setStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const isRecordingRef = useRef<boolean>(false);
     const [error, setError] = useState<string>('');
+
+    // Keep latest callback in ref to avoid stale closures in event listener
+    const onChunkRef = useRef(onTranscriptionChunk);
+
+    // Update ref when prop changes
+    if (onChunkRef.current !== onTranscriptionChunk) {
+        onChunkRef.current = onTranscriptionChunk;
+    }
 
     const startStreaming = async () => {
         try {
             setError('');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = recorder;
+            isRecordingRef.current = true;
+            setStatus('recording');
 
-            recorder.ondataavailable = async (e) => {
-                if (e.data.size === 0) return;
+            // Function to handle the recording cycle
+            const processSegment = () => {
+                if (!isRecordingRef.current) return;
 
-                const formData = new FormData();
-                formData.append('audio', e.data, `chunk-${Date.now()}.webm`);
+                // Create a fresh recorder for each segment
+                const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                mediaRecorderRef.current = recorder;
 
-                try {
-                    // Get auth token
-                    const token = localStorage.getItem('echo_token');
+                recorder.ondataavailable = async (e) => {
+                    if (e.data.size === 0) return;
+                    console.log(`🎤 Chunk captured: ${e.data.size} bytes`);
 
-                    // Send chunk to backend with auth header
-                    const response = await fetch('http://localhost:8080/live-chunk', {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'Authorization': `Bearer ${token}`
+                    const formData = new FormData();
+                    formData.append('audio', e.data, `chunk-${Date.now()}.webm`);
+
+                    try {
+                        const token = localStorage.getItem('echo_token');
+                        const response = await fetch('/api/live-chunk', {
+                            method: 'POST',
+                            body: formData,
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            console.log('📝 Transcribed:', data.text);
+                            if (onChunkRef.current && data.text) {
+                                onChunkRef.current(data.text);
+                            }
                         }
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        console.log('📝 Transcribed:', data.text);
-
-                        // Send to parent component
-                        if (onTranscriptionChunk && data.text) {
-                            onTranscriptionChunk(data.text);
-                        }
-                    } else {
-                        console.error('Transcription failed:', await response.text());
+                    } catch (err) {
+                        console.error('Upload error:', err);
                     }
-                } catch (err) {
-                    console.error('Network error:', err);
-                    setError('Connection failed. Check if backend is running.');
-                }
+                };
+
+                recorder.onstop = () => {
+                    if (isRecordingRef.current) {
+                        // Recursively start the next segment
+                        processSegment();
+                    }
+                };
+
+                recorder.start();
+
+                // Stop this segment after 5 seconds to trigger dataavailable + onstop
+                setTimeout(() => {
+                    if (recorder.state === 'recording') {
+                        recorder.stop();
+                    }
+                }, 10000); // 10 seconds per chunk for better context
             };
 
-            recorder.start(5000); // Send chunk every 5 seconds
-            setStatus('recording');
+            processSegment();
+
         } catch (err) {
             console.error('Microphone error:', err);
             setError('Microphone access denied');
+            setStatus('idle');
         }
     };
 
     const stopStreaming = () => {
-        if (mediaRecorderRef.current) {
+        isRecordingRef.current = false;
+
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.stop();
+        }
+
+        // Stop the actual media stream tracks
+        if (mediaRecorderRef.current && mediaRecorderRef.current.stream) {
             mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         }
+
         setStatus('idle');
     };
 

@@ -10,23 +10,34 @@ import (
 )
 
 type GeminiService struct {
-	APIKey string
+	client *genai.Client
 }
 
-func NewGeminiService(apiKey string) *GeminiService {
-	return &GeminiService{APIKey: apiKey}
+// NewGeminiService initializes the client ONCE to save connection time
+func NewGeminiService(apiKey string) (*GeminiService, error) {
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	if err != nil {
+		return nil, err
+	}
+	
+	return &GeminiService{client: client}, nil
+}
+
+// Close ensures the client connection is cleaned up when the app stops
+func (s *GeminiService) Close() {
+	s.client.Close()
 }
 
 // Beautify uses Gemini to format and improve text quality
 func (s *GeminiService) Beautify(text string) (string, error) {
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(s.APIKey))
-	if err != nil {
-		return "", err
-	}
-	defer client.Close()
 
-	model := client.GenerativeModel("gemini-1.5-flash")
+    // UPDATED: Using the model found in your list
+	model := s.client.GenerativeModel("gemini-2.5-flash")
+	
+    // Optimization: Lower temperature for more deterministic formatting
+    model.SetTemperature(0.3) 
 
 	prompt := fmt.Sprintf(`You are a professional meeting notes formatter. Clean up and improve the following text while preserving all important information:
 
@@ -49,20 +60,24 @@ Text to improve:
 		return "", fmt.Errorf("no response from Gemini")
 	}
 
-	result := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
-	return strings.TrimSpace(result), nil
+    // Safer text extraction
+    var resultBuilder strings.Builder
+    for _, part := range resp.Candidates[0].Content.Parts {
+        if txt, ok := part.(genai.Text); ok {
+            resultBuilder.WriteString(string(txt))
+        }
+    }
+    
+	return strings.TrimSpace(resultBuilder.String()), nil
 }
 
 // ExtractTasks uses Gemini to extract action items from text
 func (s *GeminiService) ExtractTasks(text string) ([]string, error) {
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(s.APIKey))
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
 
-	model := client.GenerativeModel("gemini-1.5-flash")
+    // UPDATED: Using the model found in your list
+	model := s.client.GenerativeModel("gemini-2.5-flash")
+    model.SetTemperature(0.1) // Low temp for factual extraction
 
 	prompt := fmt.Sprintf(`Extract all action items and tasks from the following meeting notes.
 
@@ -84,11 +99,16 @@ Meeting notes:
 		return nil, fmt.Errorf("no response from Gemini")
 	}
 
-	result := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+    var resultBuilder strings.Builder
+    for _, part := range resp.Candidates[0].Content.Parts {
+        if txt, ok := part.(genai.Text); ok {
+            resultBuilder.WriteString(string(txt))
+        }
+    }
 
 	// Parse tasks into array
 	tasks := []string{}
-	lines := strings.Split(result, "\n")
+	lines := strings.Split(resultBuilder.String(), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "- ") {

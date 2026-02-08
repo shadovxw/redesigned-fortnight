@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"backend/internal/services"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,6 +42,7 @@ func (h *AIHandler) HandleAIFormat(c *gin.Context) {
 	}
 
 	if err != nil {
+		fmt.Printf("AI Error: %v\n", err)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

@@ -1,11 +1,8 @@
 import axios from 'axios';
 
-// Development: use localhost:8080 via .env.local
 // Development: use localhost:8080 or .env.local
 // Production: empty string = relative paths, nginx proxies to echo-backend
-const API_URL = process.env.NODE_ENV === 'production' 
-    ? "/api"
-    : "http://localhost:8080";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 
 const api = axios.create({
