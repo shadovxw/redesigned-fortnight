@@ -12,6 +12,7 @@ COPY . .
 
 # Build the application
 ENV NEXT_PUBLIC_API_URL=""
+ENV NODE_ENV=production
 RUN npm run build
 
 # Production stage with nginx
